@@ -9,7 +9,8 @@ from ui_main import MainUI
 from bitmaps import user_image
 from db_initializer import DBInitializer  # Interacts with your refactored backend schema
 import time
-from utils import resource_path
+from utils import resource_path, kill_ollama_process
+
 
 LOGO = resource_path("images/ub_logo.png")
 COLOR_ERROR = "#f08080"
@@ -34,9 +35,16 @@ class LoginUI(CTk):
         self.resizable(width=False, height=False)
         self.title('ProjectCare - Iniciar Sesión')
         
-        self.db_manager = DBInitializer()
-        
-        # Initialize tables silently if missing on startup and alert user via popup on failure
+        self.db_manager = DBInitializer() # initilize server config
+
+        self.win_segments()
+        self._top_segment()
+        self._mid_segment()
+        self._bottom_segment()
+        self._newuser_segment()
+
+    
+    def connect_to_default_server(self) -> bool:
         try:
             connection_success = self.db_manager.initialize_auth_system()
             if not connection_success:
@@ -50,13 +58,10 @@ class LoginUI(CTk):
                 "Error Crítico", 
                 f"Error inesperado al conectar a la Base de Datos:\n{e}\n\nEntrar al sistema como Invitado."
             )
+            return False
+        else:
+            return True
 
-        # Build basic structural layout panels
-        self.win_segments()
-        self._top_segment()
-        self._mid_segment()
-        self._bottom_segment()
-        self._newuser_segment()
 
     def win_segments(self) -> None:
         """Sets up persistent container wrappers for standard login flow."""
@@ -198,6 +203,10 @@ class LoginUI(CTk):
         self.workspace_root.focus_set()
 
     def _check_user_credentials(self) -> None:
+        if not self.connect_to_default_server():
+            return
+
+
         """Processes and queries login inputs against database table entities."""
         self.enter_btn.configure(state='disabled', text='Verificando...')
         username = self.user_entry.get().strip()
@@ -242,6 +251,9 @@ class LoginUI(CTk):
                 self.switch_to_login_ui()
                 self.deiconify()
                 self.lift()
+                
+                kill_ollama_process()
+                
                 self.focus_force()
 
     def switch_to_add_user_ui(self) -> None:
@@ -309,6 +321,9 @@ class LoginUI(CTk):
 
     def register_user(self) -> None:
         """Extracts text streams and evaluates inputs through the db initialization pipeline."""
+        if not self.connect_to_default_server():
+            return 
+        
         user_payload = {}
         
         if self.registration_entries['password'].get() != self.registration_entries['repeat_password'].get():

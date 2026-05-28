@@ -158,6 +158,8 @@ class DBInitializer:
         Authenticates an employee. Accepts either their unique 'employee_number' (EMP0001) 
         or their clean 'username' (admin) to maximize interface flexibility.
         """
+
+        self.initialize_auth_system()
         input_token = str(credential_input).strip()
         pwd = str(password).strip()
 

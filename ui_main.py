@@ -17,6 +17,7 @@ import threading
 import os 
 from functools import partial
 import time
+import shutil
 
 
 from bitmaps import images, chatbot_image
@@ -25,7 +26,7 @@ from db_connection import DBConnectionManager
 from pca_analysis import perform_pca
 from model_engine import run_pycaret_pipeline, run_custom_scikit_model
 from sklearn.metrics import confusion_matrix, PrecisionRecallDisplay, RocCurveDisplay
-from ollama_installer import ensure_ollama_setup
+from ollama_installer import ensure_ollama_setup, get_ollama_executable
 
 # Evita que librerías internas bifurquen hilos inseguros que provoquen el 'abort' en macOS
 os.environ["OMP_NUM_THREADS"] = "1"
@@ -168,11 +169,18 @@ class MainUI:
         )
         self.desc_table_patients.pack(fill="both", expand=True)
 
+        ollama_path = get_ollama_executable()
+
+        if not shutil.which("ollama") and not os.path.exists(ollama_path):
+            messagebox.showinfo(title='Herramientas de LLMs Ollama', message="Iniciando descarga e instalación de herramientas de motor de Chatbot.\n" \
+            "Esto puede tardar unos minutos.")
+
         start_session_logs = partial(ensure_ollama_setup, logs=self.log)
 
+        
         threading.Thread(target=start_session_logs, daemon=True).start()
-
         self.log(message='Panel de Datos de Paciente. Datos de paciente no cargados...', username=user) # type: ignore
+        
 
 
 
@@ -313,11 +321,11 @@ class MainUI:
 
         self.db_fields = {}
         fields_setup = [
-            ("Host / Servidor:", "host", "s501.sureserver.com"),
-            ("Puerto:", "port", "3306"),
-            ("Usuario:", "user", "Student"),
-            ("Contraseña:", "password", "Barcelona2024*"),
-            ("Base de Datos:", "database", "metales_traking")
+            ("Host / Servidor:", "host", ""),
+            ("Puerto:", "port", ""),
+            ("Usuario:", "user", ""),
+            ("Contraseña:", "password", ""),
+            ("Base de Datos:", "database", "")
         ]
 
         for label_text, key, default_val in fields_setup:
@@ -962,9 +970,6 @@ class MainUI:
         Dynamically initializes and switches the view context to the 
         split chatbot and notification panel using a matching Treeview style navigation.
         """
-        import tkinter as tk
-        from tkinter import ttk
-        import os
 
         from chatbot_engine import GenericDataChatbot
         self.chat_engine = GenericDataChatbot()
@@ -2617,7 +2622,7 @@ class MainUI:
         """
         import webbrowser
         
-        github_url = "https://github.com/javiNguema/DatahealthProject/blob/3cd5d99a177a6a17293a599dee382631cfa85baa/README.md" 
+        github_url = "https://github.com/javiNguema/HealthEvolPredict/blob/5e534f6a5db8be746f567682cb932eaeddf2a5b3/README.md" 
         
         try:
             # Open the URL in a new browser tab if possible, otherwise a new window
