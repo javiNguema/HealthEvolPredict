@@ -1,6 +1,7 @@
 import numpy as np
 import pandas as pd
 from typing import Tuple, Dict, Any, List, Optional
+import tensorflow as tf
 
 # Scikit-learn para modelos independientes
 from sklearn.model_selection import train_test_split
@@ -190,3 +191,58 @@ def run_custom_scikit_model(df: pd.DataFrame, features: List[str], target_col: s
             importance_list.append(f"{actual_features[idx]}: {importances[idx]:.4f}")
 
     return metrics, importance_list, model, X_test, y_test
+
+
+
+
+
+
+
+def multilayer_perceptron(self, df: pd.DataFrame, features: List[str], target_col: str) -> Tuple[Dict[str, float], List[str], Any, List[str], List[str]]:
+    """
+    Implementación de un clasificador Multilayer Perceptron (MLP) usando Scikit-Learn.
+    """
+    from sklearn.neural_network import MLPClassifier
+    
+    cleaned_df = preprocess_selected_features(df, features, target_col)
+    if cleaned_df is None:
+        raise ValueError("Variables seleccionadas sin suficientes muestras válidas tras la limpieza.")
+
+    actual_features = [col for col in cleaned_df.columns if col != target_col]
+    X = cleaned_df[actual_features]
+    y = cleaned_df[target_col]
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y if y.nunique() >= 2 else None
+    )
+
+    model = MLPClassifier(hidden_layer_sizes=(100,), max_iter=300, random_state=42)
+    model.fit(X_train, y_train)
+    preds = model.predict(X_test)
+    
+    if hasattr(model, "predict_proba"):
+        probs = model.predict_proba(X_test)[:, 1] # type: ignore
+        try:
+            auc_v = roc_auc_score(y_test, probs)
+        except:
+            auc_v = 0.0
+    else:
+        auc_v = 0.0
+
+    metrics = {
+        "Accuracy": accuracy_score(y_test, preds),
+        "Precision": precision_score(y_test, preds, zero_division=0),
+        "Recall": recall_score(y_test, preds, zero_division=0),
+        "F1-Score": f1_score(y_test, preds, zero_division=0),
+        "AUC": auc_v
+    }
+
+    importance_list = []
+    if hasattr(model, "coefs_"):
+        coefs = np.mean(np.abs(model.coefs_[0]), axis=1) # type: ignore
+        indices = np.argsort(coefs)[::-1]
+        for idx in indices:
+            importance_list.append(f"{actual_features[idx]}: {coefs[idx]:.4f}")
+
+    return metrics, importance_list, model, X_test, y_test
+

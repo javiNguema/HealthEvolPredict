@@ -2,6 +2,7 @@
 import tkinter as tk
 from tkinter import font, ttk
 from turtle import heading
+from IPython import display
 import customtkinter as ctk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from matplotlib.figure import Figure
@@ -34,6 +35,8 @@ os.environ["MKL_NUM_THREADS"] = "1"
 os.environ["OPENBLAS_NUM_THREADS"] = "1"
 os.environ["VECLIB_MAXIMUM_THREADS"] = "1"
 os.environ["NUMEXPR_NUM_THREADS"] = "1"
+
+# pd.set_option('display.float_format', lambda x: '%.4f' % x)
 
 padx = 10
 pady = 5
@@ -87,8 +90,8 @@ class MainUI:
     is_on_models_panel: bool = False
     is_on_chatbot_panel:bool = False
 
-    model_features: Any | None = None
-    model_outputs: Any | None = None
+    model_features: Any | list = []
+    model_outputs: Any | list = []
     db_tables_iid: dict = {}
 
     is_add_patient_collapsed: bool = True
@@ -97,6 +100,7 @@ class MainUI:
     is_row_selected: bool = False
     is_connected: bool = False
     login_win_action: Callable = None # type: ignore
+    on_preview = False
     
 
     def __init__(self, toplvl: ctk.CTkToplevel, user: list | None = None, on_close_func:Callable|None = None) -> None:
@@ -110,9 +114,6 @@ class MainUI:
         system_screen_width = toplvl.winfo_screenwidth()
         system_screen_height = toplvl.winfo_screenheight()
         self.trained_model = None    
-        self.model_features = []      
-        self.model_outputs = None     
-
 
         self.log_font =("helvetica", 12, 'bold')
         size_font_all = 15 
@@ -501,6 +502,7 @@ class MainUI:
         if file_path:
             # try:
             new_columns, new_raw_data, self.loadedData = retrieve_data(file_path)
+            
             self.view_data(columns=new_columns, data=new_raw_data)
             self.log(message=f'{len(new_raw_data)} datos de Pacientes Cargados con éxito')
             # messagebox.showinfo("Éxito", f"Se han cargado {len(new_raw_data)} registros.")
@@ -655,7 +657,7 @@ class MainUI:
         self.models_panel_frame.configure(width=self.tree_table_width, height=self.tree_table_height)
         
         config_box = ctk.CTkFrame(master=self.models_panel_frame)
-        config_box.pack(side="top", fill="x", padx=0, pady=pady)
+        config_box.pack(side="top", fill="x", padx=0, pady=pady, expand =True)
         
         title_lbl = ctk.CTkLabel(master=config_box, text="Configuración de Modelos Machine Learning", font=(self.title_font[0], 15, "bold"))
         title_lbl.grid(row=0, column=0, columnspan=4, sticky="w", padx=15, pady=(10, 5))
@@ -1150,6 +1152,7 @@ class MainUI:
 
     def _send_chat_message(self, event=None) -> str:
         """Extracts text, dynamically provisions a Treeview node thread if needed, and streams indicators."""
+        self.log(message="Enviando mensaje al chatbot...")
 
         raw_text = self.chat_entry.get("0.0", "end").strip()
         
@@ -1168,55 +1171,66 @@ class MainUI:
             self.chat_history.configure(state="disabled")
             self.chat_entry.delete("0.0", "end")
             self.chat_history.see("end")
+            self.log(message="Intento de consulta al chatbot sin datos cargados. Solicitud bloqueada.")
+            time.sleep(1)
+            self.log(message="Cargar datos antes de enviar consultas.")
             return 'break'
-        else:
-            self.chat_history.insert("end", f"\nAsistente: Buscando información en los datos cargados...\n")
-            self.chat_history.configure(state="disabled")
-    
-            # 3. Dynamic Provisioning: Create a thread node if none is active or selected
-            str_length = 20
-            if self.current_active_thread_id is None:
-                # Create truncated version of the prompt string (e.g., first 28 chars...)
-                truncated_title = raw_text[:str_length] + "..." if len(raw_text) > str_length else raw_text
-                
-                # Insert child node leaf directly under our history parent header
-                new_iid = self.chat_treeview.insert(self.history_parent, 'end', text=truncated_title.capitalize(), values=("",))
-                
-                # Allocate session mapping space
-                self.chat_sessions[new_iid] = {"title": truncated_title.capitalize(), "messages": []}
-                self.current_active_thread_id = new_iid
-                
-                # Visually highlight and focus selection onto this newly deployed branch node
-                self.chat_treeview.selection_set(new_iid)
-                self.chat_treeview.focus(new_iid)
+        
+        
+        self.chat_history.insert("end", f"\nAsistente: Buscando información en los datos cargados...\n")
+        self.chat_history.configure(state="disabled")
 
-            # Save historical user record log to memory context array list
-            self.chat_sessions[self.current_active_thread_id]["messages"].append({"role": "Tú", "text": raw_text})
-            
-            # 4. Clear input field block tracking metrics down
-            self.chat_entry.delete("0.0", "end")
-            self.chat_history.see("end")
-            
-            # 5. Dispatch async background calculation loop execution call
-            threading.Thread(
-                target=self._async_chatbot_worker, 
-                args=(raw_text, self.current_active_thread_id), 
-                daemon=True
-            ).start()
 
-            return "break"
+        # 3. Dynamic Provisioning: Create a thread node if none is active or selected
+        str_length = 20
+        if self.current_active_thread_id is None:
+            # Create truncated version of the prompt string (e.g., first 28 chars...)
+            truncated_title = raw_text[:str_length] + "..." if len(raw_text) > str_length else raw_text
+            
+            # Insert child node leaf directly under our history parent header
+            new_iid = self.chat_treeview.insert(self.history_parent, 'end', text=truncated_title.capitalize(), values=("",))
+            
+            # Allocate session mapping space
+            self.chat_sessions[new_iid] = {"title": truncated_title.capitalize(), "messages": []}
+            self.current_active_thread_id = new_iid
+            
+            # Visually highlight and focus selection onto this newly deployed branch node
+            self.chat_treeview.selection_set(new_iid)
+            self.chat_treeview.focus(new_iid)
+
+        # Save historical user record log to memory context array list
+        self.chat_sessions[self.current_active_thread_id]["messages"].append({"role": "Tú", "text": raw_text})
+        
+        # 4. Clear input field block tracking metrics down
+        self.chat_entry.delete("0.0", "end")
+        self.chat_history.see("end")
+        
+        # 5. Dispatch async background calculation loop execution call
+        threading.Thread(
+            target=self._async_chatbot_worker, 
+            args=(raw_text, self.current_active_thread_id), 
+            daemon=True
+        ).start()
+
+        return "break"
 
 
 
     def _async_chatbot_worker(self, prompt: str, target_thread_id: str) -> None:
         """Background background execution task loop tracking specific thread context."""
+
+        self.log(message="Chatbot procesando solicitud...")
+
         bot_reply = self.chat_engine.execute_and_reply(prompt, self.loadedData)
         # Pass the calculated response text alongside the destination context node identifier
         self.toplvl.after(0, lambda: self._update_chat_ui_with_reply(bot_reply, target_thread_id))
+        
 
 
     def _update_chat_ui_with_reply(self, reply: str, target_thread_id: str) -> None:
         """Appends reply data securely to history log cache coordinates."""
+
+        self.log(message="Chatbot ha generado una respuesta, actualizando interfaz...")
         # Commit computed record to the appropriate mapping list inside our dictionary data structure
         if target_thread_id in self.chat_sessions:
             self.chat_sessions[target_thread_id]["messages"].append({"role": "Asistente", "text": reply})
@@ -1227,9 +1241,13 @@ class MainUI:
             self.chat_history.insert("end", f"\nAsistente:\n{reply}\n")
             self.chat_history.configure(state="disabled")
             self.chat_history.see("end")
+        time.sleep(0.5)
+        self.log(message="Interfaz de chat actualizada con la respuesta del asistente.")
+
 
     def _on_chat_tree_select(self, event) -> None:
         """Listens to selections, changing context mapping views and loading text histories on click."""
+        self.log(message="Seleccionando hilo de consulta en el historial...")
         selected_items = self.chat_treeview.selection()
         if not selected_items:
             return
@@ -2168,15 +2186,21 @@ class MainUI:
 
         modal = ctk.CTkToplevel(self.toplvl)
         modal.title("Definir Variables")
-        modal.geometry("550x600")
+        modal.geometry("600x680")
         modal.transient(self.toplvl)
         modal.grab_set()
 
-        modal.grid_rowconfigure(2, weight=1)
-        modal.grid_columnconfigure(0, weight=1)
-        modal.grid_columnconfigure(1, weight=1)
+        
+        width, height = modal.winfo_width(), modal.winfo_height()
+        selection_frame = ctk.CTkFrame(master=modal, width=width, height=height, fg_color="transparent")
+        selection_frame.pack(fill="both", expand=True)
 
-        title_lbl = ctk.CTkLabel(master=modal, text="Configuración de Variables para Modelado", font=(self.title_font[0], 14, "bold"))
+        selection_frame.grid_rowconfigure(2, weight=1)
+        selection_frame.grid_columnconfigure(0, weight=1)
+        selection_frame.grid_columnconfigure(1, weight=1)
+
+
+        title_lbl = ctk.CTkLabel(master=selection_frame, text="Configuración de Variables para Modelado", font=(self.title_font[0], 14, "bold"))
         title_lbl.grid(row=0, column=0, columnspan=2, pady=(15, 5), padx=15, sticky="w")
 
         self.selected_features_vars = {}
@@ -2184,6 +2208,7 @@ class MainUI:
         
         feature_checkboxes = {}
         output_checkboxes = {}
+
         available_columns = list(self.loadedData.columns)
 
         def on_checkbox_toggle(column_name: str, target_side: str):
@@ -2214,16 +2239,16 @@ class MainUI:
                     self.selected_outputs_vars[col].set(True)
                     on_checkbox_toggle(col, "Y")
 
-        btn_all_x = ctk.CTkButton(master=modal, text="Seleccionar Todo X", font=(self.normal_font[0], 11), command=select_all_features, height=24)
+        btn_all_x = ctk.CTkButton(master=selection_frame, text="Seleccionar Todo X", font=(self.normal_font[0], 11), command=select_all_features, height=24)
         btn_all_x.grid(row=1, column=0, padx=15, pady=(5, 5), sticky="w")
 
-        btn_all_y = ctk.CTkButton(master=modal, text="Seleccionar Todo Y", font=(self.normal_font[0], 11), command=select_all_outputs, height=24)
+        btn_all_y = ctk.CTkButton(master=selection_frame, text="Seleccionar Todo Y", font=(self.normal_font[0], 11), command=select_all_outputs, height=24)
         btn_all_y.grid(row=1, column=1, padx=15, pady=(5, 5), sticky="w")
 
-        features_frame = ctk.CTkScrollableFrame(master=modal, label_text="Características (Variables X)")
+        features_frame = ctk.CTkScrollableFrame(master=selection_frame, label_text="Características (Variables X)")
         features_frame.grid(row=2, column=0, padx=10, pady=5, sticky="nsew")
         
-        outputs_frame = ctk.CTkScrollableFrame(master=modal, label_text="Variables de Salida (Y)")
+        outputs_frame = ctk.CTkScrollableFrame(master=selection_frame, label_text="Variables de Salida (Y)")
         outputs_frame.grid(row=2, column=1, padx=10, pady=5, sticky="nsew")
 
         for col in available_columns:
@@ -2253,7 +2278,7 @@ class MainUI:
             elif was_output:
                 on_checkbox_toggle(col, "Y")
 
-        btn_frame = ctk.CTkFrame(master=modal, fg_color="transparent")
+        btn_frame = ctk.CTkFrame(master=selection_frame, fg_color="transparent")
         btn_frame.grid(row=3, column=0, columnspan=2, pady=15, padx=10, sticky="e")
 
         def save_and_close():
@@ -2264,13 +2289,73 @@ class MainUI:
             self.model_outputs = outputs_chosen
             
             messagebox.showinfo("Guardado", f"Configuración guardada:\n\nVariables de entrada (Features): {len(features_chosen)}\nVariables de salida (outputs): {len(outputs_chosen)} seleccionadas")
-            modal.destroy()
 
-        cancel_btn = ctk.CTkButton(master=btn_frame, text="Cancelar", fg_color="#5a6268", command=modal.destroy, width=100)
+
+        cancel_btn = ctk.CTkButton(master=btn_frame, text="Cancelar", fg_color="#5a6268", command=lambda: self.close_variable_selection_modal(modal), width=100)
         cancel_btn.pack(side="left", padx=5)
 
         confirm_btn = ctk.CTkButton(master=btn_frame, text="Confirmar", fg_color=blue_widget, command=save_and_close, width=100)
         confirm_btn.pack(side="left", padx=5)
+
+        preview_btn = ctk.CTkButton(master=btn_frame, text="Vista Previa", fg_color="#20c997", command=lambda: self._preview_variable_selection(modal), width=100)
+        preview_btn.pack(side="left", padx=5)
+        modal.wm_protocol("WM_DELETE_WINDOW", lambda: self.close_variable_selection_modal(modal))  # Manejar cierre con la X de la ventana
+
+    def close_variable_selection_modal(self, modal):
+        self.on_preview = False
+        modal.grab_release()
+        modal.destroy()
+        
+
+
+    def _preview_variable_selection(self, master_modal):
+
+        if self.on_preview:
+            return
+        
+        try:
+            assert hasattr(self, 'model_features') or hasattr(self, 'model_outputs')
+        except Exception:            
+            messagebox.showerror("Error", "No se han definido variables de entrada o salida para previsualizar.")
+        else:
+            if not self.model_features and not self.model_outputs:
+                messagebox.showerror("Error", "No se ha confirmado la selección de variables de entrada o salida para previsualizar.")
+                return
+            columns = self.model_features + self.model_outputs # type: ignore
+
+
+        df = self.loadedData[columns] # type: ignore
+
+            
+        table_frame = CustomTable(
+            font_data=self.normal_font,
+            font_header=self.normal_font,
+            master=master_modal,
+            default_height=10,
+            row_height=16,
+        ) # type: ignore
+
+        table_frame.tree_config(columns=columns, data_list=df.values.tolist()) # type: ignore
+        
+        def close_preview():
+            table_frame.pack_forget()
+            table_frame.destroy()
+            preview_frame.pack_forget()
+            preview_frame.destroy()
+            self.on_preview = False
+        
+
+        table_frame.pack(side="top", fill="both", padx=10, pady=10)
+        preview_frame = ctk.CTkFrame(master=master_modal, fg_color="transparent")
+        preview_frame.pack(side="top", fill="x", padx=10, pady=(0, 10))
+        close_preview_btn = ctk.CTkButton(
+            master=preview_frame, text="Cerrar Vista Previa", fg_color="#5a6268", command=lambda: close_preview(), width=150)
+        close_preview_btn.pack(side="right", padx=5)
+
+        self.on_preview = True
+
+        
+        
 
 
     def _on_import_model(self) -> None:
